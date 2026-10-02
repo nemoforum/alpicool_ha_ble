@@ -440,6 +440,37 @@ async def test_connect_reports_failure_instead_of_raising(fridge: FridgeApi) -> 
     assert fridge._client is None
 
 
+async def test_connect_logs_gatt_layout_when_characteristic_missing(
+    fridge: FridgeApi, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unknown model (e.g. service 0xAF30) logs what it offers instead."""
+    client = MagicMock()
+    client.is_connected = True
+    client.disconnect = AsyncMock()
+    char = MagicMock()
+    char.uuid = "0000af31-0000-1000-8000-00805f9b34fb"
+    char.properties = ["write", "notify"]
+    service = MagicMock()
+    service.uuid = "0000af30-0000-1000-8000-00805f9b34fb"
+    service.characteristics = [char]
+    client.services = [service]
+
+    with (
+        patch.object(
+            api_module.bluetooth,
+            "async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch.object(
+            api_module, "establish_connection", AsyncMock(return_value=client)
+        ),
+    ):
+        assert await fridge.connect(is_reconnect=True) is False
+
+    assert "0000af30-0000-1000-8000-00805f9b34fb" in caplog.text
+    assert "0000af31-0000-1000-8000-00805f9b34fb [write/notify]" in caplog.text
+
+
 async def test_connect_picks_write_with_response_when_needed(
     fridge: FridgeApi,
 ) -> None:

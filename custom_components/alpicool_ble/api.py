@@ -38,6 +38,18 @@ def has_right_zone(status: dict) -> bool:
     return status.get("right_current", _NO_ZONE_TEMPERATURE) != _NO_ZONE_TEMPERATURE
 
 
+def _describe_services(services) -> str:
+    """Return a compact description of a GATT layout for log messages."""
+    parts = []
+    for service in services:
+        chars = ", ".join(
+            f"{char.uuid} [{'/'.join(char.properties)}]"
+            for char in service.characteristics
+        )
+        parts.append(f"{service.uuid}: {chars or '-'}")
+    return "; ".join(parts) or "none"
+
+
 def _to_signed_byte(b: int) -> int:
     """Convert an unsigned byte (0-255) to a signed byte (-128-127)."""
     return b - 256 if b > 127 else b
@@ -410,8 +422,11 @@ class FridgeApi:
                     break
 
             if not write_char:
+                # Log the GATT layout so an unsupported model can be reported.
                 _LOGGER.error(
-                    "Write characteristic %s not found!", FRIDGE_RW_CHARACTERISTIC_UUID
+                    "Write characteristic %s not found! Services seen: %s",
+                    FRIDGE_RW_CHARACTERISTIC_UUID,
+                    _describe_services(self._client.services),
                 )
                 await self.disconnect()
                 return False

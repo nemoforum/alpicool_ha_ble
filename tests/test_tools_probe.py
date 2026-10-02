@@ -28,6 +28,8 @@ def test_looks_like_fridge(probe) -> None:
     """Known names and the service UUID are recognised."""
     assert probe.looks_like_fridge("WT-0001", [])
     assert probe.looks_like_fridge(None, ["00001234-0000-1000-8000-00805F9B34FB"])
+    # Brevia 24240 advertises 0xAF30.
+    assert probe.looks_like_fridge(None, ["0000af30-0000-1000-8000-00805f9b34fb"])
     assert not probe.looks_like_fridge("Phone", [])
 
 

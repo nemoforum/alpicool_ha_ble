@@ -48,6 +48,13 @@ Notes:
 A guide (probe script, research notes, HACS vs. ESPHome comparison) is in [docs/maentum](docs/maentum/README.md).
 
 ***
+## Brevia cooler boxes
+
+| Model | Status |
+|---|---|
+| 24240 | Advertises service `0xAF30` under the name `A1-…`, which is used for discovery. Not confirmed yet that the GATT layout matches the Alpicool protocol (`0x1235`/`0x1236`); check with `python tools/maentum_probe.py services <address>`. If the characteristics are missing, the integration logs the services it found. |
+
+***
 ## Installation
 
 Easiest install is via [HACS](https://hacs.xyz/):

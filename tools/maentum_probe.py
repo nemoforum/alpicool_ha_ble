@@ -41,6 +41,15 @@ SERVICE_UUID = "00001234-0000-1000-8000-00805f9b34fb"
 WRITE_UUID = "00001235-0000-1000-8000-00805f9b34fb"
 NOTIFY_UUID = "00001236-0000-1000-8000-00805f9b34fb"
 
+# Service UUIDs some boxes advertise instead of 0x1234, e.g. 0xAF30 on a
+# Brevia 24240 (name "A1-..."). The GATT layout behind them is checked by the
+# "services" command.
+ADVERTISED_SERVICE_UUIDS = (
+    SERVICE_UUID,
+    "0000fff0-0000-1000-8000-00805f9b34fb",
+    "0000af30-0000-1000-8000-00805f9b34fb",
+)
+
 # Name prefixes the Alpicool app looks for (BrassMonkeyFridgeMonitor README).
 KNOWN_NAME_PREFIXES = ("WT-", "A1-", "AK1-", "AK2-", "AK3-")
 
@@ -63,7 +72,7 @@ def status_to_dict(status: FridgeStatus) -> dict[str, Any]:
 
 def looks_like_fridge(name: str | None, service_uuids: list[str]) -> bool:
     """Return True if advertisement data hints at an Alpicool-type fridge."""
-    if SERVICE_UUID in (u.lower() for u in service_uuids):
+    if any(u.lower() in ADVERTISED_SERVICE_UUIDS for u in service_uuids):
         return True
     return bool(name) and name.upper().startswith(KNOWN_NAME_PREFIXES)
 
