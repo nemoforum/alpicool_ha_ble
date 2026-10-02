@@ -471,6 +471,62 @@ async def test_connect_logs_gatt_layout_when_characteristic_missing(
     assert "0000af31-0000-1000-8000-00805f9b34fb [write/notify]" in caplog.text
 
 
+def _char(uuid: str, handle: int, properties: list[str]) -> MagicMock:
+    """Return a GATT characteristic mock."""
+    char = MagicMock()
+    char.uuid = uuid
+    char.handle = handle
+    char.properties = properties
+    return char
+
+
+async def test_connect_handles_duplicate_service_by_characteristic_object(
+    fridge: FridgeApi,
+) -> None:
+    """Brevia 24240: 0x1234 twice, so writes and notify must not use the UUID.
+
+    Layout as read from the fridge: the first 0x1236 notifies, a second one
+    in the same service is read-only.
+    """
+    notify_uuid = api_module.FRIDGE_NOTIFY_UUID
+    write_1 = _char(FRIDGE_RW_CHARACTERISTIC_UUID, 5, ["write-without-response"])
+    notify_1 = _char(notify_uuid, 7, ["notify"])
+    read_only = _char(notify_uuid, 10, ["read"])
+    write_2 = _char(FRIDGE_RW_CHARACTERISTIC_UUID, 13, ["write-without-response"])
+    notify_2 = _char(notify_uuid, 15, ["read", "notify"])
+    first, second = MagicMock(), MagicMock()
+    first.characteristics = [write_1, read_only, notify_1]
+    second.characteristics = [notify_2, write_2]
+
+    client = MagicMock()
+    client.is_connected = True
+    client.mtu_size = 23
+    client.start_notify = AsyncMock()
+    client.write_gatt_char = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.services = [first, second]
+
+    with (
+        patch.object(
+            api_module.bluetooth,
+            "async_ble_device_from_address",
+            return_value=MagicMock(),
+        ),
+        patch.object(
+            api_module, "establish_connection", AsyncMock(return_value=client)
+        ),
+    ):
+        assert await fridge.connect(is_reconnect=True) is True
+
+    assert client.start_notify.await_args.args[0] is notify_1
+    await fridge._send_raw(b"\x01")
+    assert client.write_gatt_char.await_args.args[0] is write_1
+
+    await fridge.disconnect()
+    assert fridge._write_char is None
+    assert fridge._notify_char is None
+
+
 async def test_connect_picks_write_with_response_when_needed(
     fridge: FridgeApi,
 ) -> None:
