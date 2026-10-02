@@ -77,6 +77,49 @@ def looks_like_fridge(name: str | None, service_uuids: list[str]) -> bool:
     return bool(name) and name.upper().startswith(KNOWN_NAME_PREFIXES)
 
 
+def find_characteristic(
+    services: Any, uuid: str, properties: tuple[str, ...]
+) -> Any:
+    """Return the first characteristic with the UUID and one of the properties.
+
+    Some boxes (Brevia 24240) list the 0x1234 service twice, so bleak's
+    get_characteristic(uuid) refuses the lookup. Property names match by
+    prefix, so "write" also matches "write-without-response".
+    """
+    for service in services:
+        for char in service.characteristics:
+            if char.uuid.lower() != uuid.lower():
+                continue
+            if any(p.startswith(want) for p in char.properties for want in properties):
+                return char
+    return None
+
+
+CONNECT_ATTEMPTS = 8
+
+_DUAL_MODE_HINT = (
+    "BlueZ keeps connecting over classic Bluetooth (BR/EDR). The box is "
+    "dual-mode (e.g. Brevia 24240) and BlueZ uses the bearer it heard last. "
+    "Stop any classic Bluetooth discovery (close the Bluetooth settings "
+    "panel, 'scan off' in bluetoothctl) and try again."
+)
+
+
+async def connect_le(client: Any) -> None:
+    """Connect, retrying while BlueZ picks the classic bearer of a dual-mode box."""
+    for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        try:
+            await client.connect()
+        except Exception as err:
+            if "ProfileUnavailable" not in str(err):
+                raise
+            _LOGGER.debug("Attempt %s: BR/EDR picked instead of LE", attempt)
+            await asyncio.sleep(1)
+        else:
+            return
+    raise SystemExit(_DUAL_MODE_HINT)
+
+
 class Probe:
     """Minimal BLE session with one fridge."""
 
@@ -87,6 +130,7 @@ class Probe:
         self._reader = FrameReader()
         self._frames: asyncio.Queue[Frame] = asyncio.Queue()
         self._client: Any = None
+        self._write_char: Any = None
         self._chunk = DEFAULT_WRITE_CHUNK
         self._with_response = True
 
@@ -107,9 +151,13 @@ class Probe:
                 "connected to a phone? A connected box stops advertising."
             )
         self._client = BleakClient(device)
-        await self._client.connect()
-        write_char = self._client.services.get_characteristic(WRITE_UUID)
-        notify_char = self._client.services.get_characteristic(NOTIFY_UUID)
+        await connect_le(self._client)
+        write_char = find_characteristic(
+            self._client.services, WRITE_UUID, ("write", "write-without-response")
+        )
+        notify_char = find_characteristic(
+            self._client.services, NOTIFY_UUID, ("notify", "indicate")
+        )
         if write_char is None or notify_char is None:
             uuids = [s.uuid for s in self._client.services]
             await self._client.disconnect()
@@ -117,6 +165,7 @@ class Probe:
                 "Characteristics 0x1235/0x1236 not found. This box probably does "
                 f"not use the Alpicool protocol. Services seen: {uuids}"
             )
+        self._write_char = write_char
         self._with_response = "write" in write_char.properties
         mtu = getattr(self._client, "mtu_size", None)
         if isinstance(mtu, int) and mtu > DEFAULT_WRITE_CHUNK + 3:
@@ -137,7 +186,7 @@ class Probe:
             if start:
                 await asyncio.sleep(0.15)
             await self._client.write_gatt_char(
-                WRITE_UUID,
+                self._write_char,
                 packet[start : start + self._chunk],
                 response=self._with_response,
             )
@@ -192,14 +241,20 @@ async def _services(address: str) -> int:
     if device is None:
         print(f"{address} not found.", file=sys.stderr)
         return 1
-    async with BleakClient(device) as client:
+    client = BleakClient(device)
+    await connect_le(client)
+    async with client:
         for service in client.services:
             print(f"service {service.uuid}  {service.description}")
             for char in service.characteristics:
-                print(f"  char {char.uuid}  [{', '.join(char.properties)}]")
+                print(
+                    f"  char {char.uuid}  handle {char.handle}  "
+                    f"[{', '.join(char.properties)}]"
+                )
         ok = (
-            client.services.get_characteristic(WRITE_UUID) is not None
-            and client.services.get_characteristic(NOTIFY_UUID) is not None
+            find_characteristic(client.services, WRITE_UUID, ("write",)) is not None
+            and find_characteristic(client.services, NOTIFY_UUID, ("notify",))
+            is not None
         )
     print(
         "\nAlpicool characteristics 0x1235/0x1236: "
