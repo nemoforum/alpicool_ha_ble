@@ -143,6 +143,22 @@ def test_decode_treats_0x7f_battery_percent_as_unknown(fridge: FridgeApi) -> Non
     assert fridge.status["bat_percent"] is None
 
 
+def test_decode_brevia_24240_status(fridge: FridgeApi) -> None:
+    """A real QUERY answer from a Brevia 24240 decodes as a single zone fridge."""
+    packet = bytes.fromhex(
+        "fefe2101000100020314ec020000fdfeff0003640e058000000200fefe008000013209cb"
+    )
+    fridge._notification_handler(None, bytearray(packet))
+
+    assert fridge.status["powered_on"] is True
+    assert fridge.status["left_target"] == 3
+    assert fridge.status["left_current"] == 3
+    assert (fridge.status["temp_min"], fridge.status["temp_max"]) == (-20, 20)
+    assert fridge.status["bat_percent"] == 100
+    assert (fridge.status["bat_vol_int"], fridge.status["bat_vol_dec"]) == (14, 5)
+    assert not api_module.has_right_zone(fridge.status)
+
+
 def test_decode_dual_zone_status(fridge: FridgeApi) -> None:
     """The second zone is decoded when the payload is long enough."""
     fridge._decode_status(DUAL_ZONE_PAYLOAD)
