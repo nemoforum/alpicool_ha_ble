@@ -35,7 +35,7 @@ _NO_ZONE_TEMPERATURE = -128
 
 def has_right_zone(status: dict) -> bool:
     """Return True if the fridge reported a real second zone."""
-    return status.get("right_current", _NO_ZONE_TEMPERATURE) != _NO_ZONE_TEMPERATURE
+    return (status.get("right_current", _NO_ZONE_TEMPERATURE) != _NO_ZONE_TEMPERATURE and status.get("right_ret_diff", 0) != 0)
 
 
 def _to_signed_byte(b: int) -> int:
