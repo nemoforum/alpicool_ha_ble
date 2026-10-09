@@ -279,6 +279,50 @@ async def test_locking_refreshes_immediately_instead_of_waiting_for_a_poll(
     assert hass.states.get("switch.fridge_lock").state == "on"
 
 
+async def test_battery_saver_switches_follow_each_other(
+    hass: HomeAssistant, enable_bluetooth: None, fake_fridge: FakeFridge
+) -> None:
+    """Switching one level on reaches the fridge and switches the others off."""
+    await setup_entry(hass, fake_fridge)
+    assert hass.states.get("switch.fridge_battery_saver_high").state == "on"
+    assert hass.states.get("switch.fridge_battery_saver_medium").state == "off"
+    assert hass.states.get("switch.fridge_battery_saver_low").state == "off"
+
+    await hass.services.async_call(
+        "switch",
+        "turn_on",
+        {"entity_id": "switch.fridge_battery_saver_low"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert fake_fridge.state[3] == 0
+    assert hass.states.get("switch.fridge_battery_saver_low").state == "on"
+    assert hass.states.get("switch.fridge_battery_saver_medium").state == "off"
+    assert hass.states.get("switch.fridge_battery_saver_high").state == "off"
+    assert hass.states.get("select.fridge_battery_saver").state == "Low"
+
+
+async def test_switching_the_active_battery_saver_level_off_keeps_it(
+    hass: HomeAssistant, enable_bluetooth: None, fake_fridge: FakeFridge
+) -> None:
+    """There is no "no level": the fridge is left alone and the switch stays on."""
+    await setup_entry(hass, fake_fridge)
+    sent_before = len(fake_fridge.received)
+
+    await hass.services.async_call(
+        "switch",
+        "turn_off",
+        {"entity_id": "switch.fridge_battery_saver_high"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert len(fake_fridge.received) == sent_before
+    assert fake_fridge.state[3] == 2
+    assert hass.states.get("switch.fridge_battery_saver_high").state == "on"
+
+
 async def test_setup_registers_an_advertisement_callback(
     hass: HomeAssistant, enable_bluetooth: None, fake_fridge: FakeFridge
 ) -> None:

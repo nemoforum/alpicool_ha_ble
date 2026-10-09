@@ -16,7 +16,9 @@ This component was inspired by the prior work done by klightspeed's [BrassMonkey
 * **Sensor:** Separate `sensor` entities for diagnostic data:
     * Battery charge percentage.
     * Battery voltage.
-* **Switch:** A `switch` entity to enable or disable the fridge's control panel lock.
+* **Switch:** `switch` entities for:
+    * The fridge's control panel lock.
+    * The battery saver level, as three switches (`Low`, `Medium`, `High`). Exactly one is on; switching one on selects that level. They do the same as the Battery saver select and suit dashboards and automations that work with switches.
 * **Number:** `number` entities to configure advanced settings directly from the UI:
     * Compressor start delay (in minutes).
     * Temperature hysteresis (return difference).
